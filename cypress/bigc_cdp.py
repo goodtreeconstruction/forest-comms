@@ -18,13 +18,29 @@ import sys
 import websockets
 import aiohttp
 
-CDP_HOST = "192.168.100.2"
-CDP_PORT = 9222
+MACHINES = {
+    "redwood": {"host": "192.168.100.2", "port": 9222},
+    "elm":     {"host": "100.93.49.28",  "port": 9222},
+}
+DEFAULT_MACHINE = "redwood"
 
-async def get_claude_tab():
+# Legacy fallback
+CDP_HOST = MACHINES[DEFAULT_MACHINE]["host"]
+CDP_PORT = MACHINES[DEFAULT_MACHINE]["port"]
+
+def get_machine(name=None):
+    """Get host/port for a machine."""
+    name = (name or DEFAULT_MACHINE).lower()
+    if name not in MACHINES:
+        print(f"ERROR: Unknown machine '{name}'. Available: {', '.join(MACHINES.keys())}")
+        sys.exit(1)
+    return MACHINES[name]["host"], MACHINES[name]["port"]
+
+async def get_claude_tab(machine=None):
     """Find the Claude.ai tab."""
+    host, port = get_machine(machine)
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"http://{CDP_HOST}:{CDP_PORT}/json") as resp:
+        async with session.get(f"http://{host}:{port}/json") as resp:
             tabs = await resp.json()
             for tab in tabs:
                 if "claude.ai" in tab.get("url", ""):
@@ -362,8 +378,29 @@ async def select_model(model_name: str = "sonnet"):
             print(f"Warning: {value.get('error')}")
             return False
 
+async def forest_status():
+    """Show status of all machines in the forest."""
+    for name, info in MACHINES.items():
+        host, port = info["host"], info["port"]
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"http://{host}:{port}/json", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    tabs = await resp.json()
+                    claude_tab = None
+                    for tab in tabs:
+                        if "claude.ai" in tab.get("url", ""):
+                            claude_tab = tab
+                            break
+                    if claude_tab:
+                        print(f"  🌲 {name:10s} ✅ Online | {claude_tab.get('title', 'Unknown')[:50]}")
+                    else:
+                        print(f"  🌲 {name:10s} ⚠️  Online (no Claude tab) | {len(tabs)} tabs open")
+        except Exception:
+            print(f"  🌲 {name:10s} ❌ Offline")
+
 def main():
-    parser = argparse.ArgumentParser(description="BigC CDP Communication Tool")
+    parser = argparse.ArgumentParser(description="BigC CDP Communication Tool - Forest Edition 🌲")
+    parser.add_argument('-m', '--machine', default=None, help='Target machine (redwood, elm). Default: redwood')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     
     # send command
@@ -377,6 +414,9 @@ def main():
     
     # status command
     subparsers.add_parser('status', help='Check BigC connection status')
+    
+    # forest command (all machines)
+    subparsers.add_parser('forest', help='Show status of all forest machines')
     
     # chats command
     subparsers.add_parser('chats', help='List BigC recent chats')
@@ -395,6 +435,12 @@ def main():
     
     args = parser.parse_args()
     
+    # Set machine target globally
+    if args.machine:
+        global CDP_HOST, CDP_PORT, DEFAULT_MACHINE
+        DEFAULT_MACHINE = args.machine.lower()
+        CDP_HOST, CDP_PORT = get_machine(DEFAULT_MACHINE)
+    
     if args.command == 'send':
         asyncio.run(send_message(args.message))
         if args.wait > 0:
@@ -403,6 +449,9 @@ def main():
         asyncio.run(read_response(args.wait))
     elif args.command == 'status':
         asyncio.run(get_status())
+    elif args.command == 'forest':
+        print("🌲 Forest Status:")
+        asyncio.run(forest_status())
     elif args.command == 'chats':
         asyncio.run(list_chats())
     elif args.command == 'chat':
