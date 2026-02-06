@@ -1,0 +1,37 @@
+# Virtual environments
+.venv/
+venv/
+__pycache__/
+
+# Logs
+*.log
+stderr*.log
+stdout*.log
+
+# Local debug/test scripts
+*.ps1
+*.bat
+*.sh
+!forest-chat/run-forestchat.ps1
+!forest-chat/run-bridge-redwood.ps1
+
+# Temp scripts
+push_*.py
+test_*.py
+send_*.py
+read_*.py
+ask_*.py
+check_*.ps1
+debug_*.ps1
+deploy_*.ps1
+
+# Runtime data
+.forest-chat/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
