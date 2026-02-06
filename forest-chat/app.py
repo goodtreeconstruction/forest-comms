@@ -366,6 +366,23 @@ CHAT_UI = """
             margin-left: 36px;
             margin-top: 2px;
         }
+        .msg-actions {
+            margin-left: 36px;
+            margin-top: 3px;
+            margin-bottom: 2px;
+        }
+        .copy-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .copy-btn:hover { color: var(--text-secondary); border-color: var(--border-light); }
+        .copy-btn.copied { color: var(--accent); border-color: var(--accent-dim); }
 
         /* Date separator */
         .date-sep {
@@ -592,6 +609,21 @@ CHAT_UI = """
                 bubble.className = 'msg-bubble ' + m.from;
                 bubble.textContent = m.message;
                 chat.lastElementChild.appendChild(bubble);
+
+                const actions = document.createElement('div');
+                actions.className = 'msg-actions';
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'copy-btn';
+                copyBtn.textContent = 'Copy';
+                copyBtn.onclick = () => {
+                    navigator.clipboard.writeText(m.message).then(() => {
+                        copyBtn.textContent = 'Copied!';
+                        copyBtn.classList.add('copied');
+                        setTimeout(() => { copyBtn.textContent = 'Copy'; copyBtn.classList.remove('copied'); }, 1500);
+                    });
+                };
+                actions.appendChild(copyBtn);
+                chat.lastElementChild.appendChild(actions);
 
                 // Show time on last message or before a group change
                 const next = allMessages[i + 1];
