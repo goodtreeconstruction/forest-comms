@@ -4,13 +4,15 @@
 Enables Cypress <-> Redwood direct communication with conversation logging.
 """
 
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, send_from_directory
 from flask_cors import CORS
 from datetime import datetime
 import json
 import os
 import requests
 import threading
+import uuid
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 CORS(app)
@@ -19,6 +21,10 @@ print("=== FOREST CHAT V2 CODE LOADED === delivered_to ACTIVE ===", flush=True)
 # Configuration
 DATA_DIR = os.path.expanduser("~/.forest-chat")
 MESSAGES_FILE = os.path.join(DATA_DIR, "messages.json")
+UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
+
+# Max upload size: 25MB
+MAX_UPLOAD_SIZE = 25 * 1024 * 1024
 
 # Webhook endpoints for waking up each bot
 WEBHOOKS = {
@@ -34,8 +40,9 @@ WEBHOOKS = {
     }
 }
 
-# Ensure data directory exists
+# Ensure data directories exist
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 def load_messages():
     """Load conversation history."""
@@ -125,9 +132,10 @@ def send_message():
     sender = data.get('from', 'unknown')
     recipient = data.get('to', 'all')
     content = data.get('message', '')
+    attachments = data.get('attachments', [])
     
-    if not content:
-        return jsonify({"error": "Message content required"}), 400
+    if not content and not attachments:
+        return jsonify({"error": "Message content or attachments required"}), 400
     
     messages = load_messages()
     
@@ -138,7 +146,8 @@ def send_message():
         "to": recipient,
         "message": content,
         "timestamp": datetime.now().isoformat(),
-        "delivered_to": {}
+        "delivered_to": {},
+        "attachments": attachments
     }
     
     messages.append(msg)
@@ -228,6 +237,47 @@ def config():
         return jsonify({"status": "updated"})
     
     return jsonify({"error": "Invalid target"}), 400
+
+# ============ File Upload ============
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """Upload a file. Returns filename for use in attachments."""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+    
+    # Check size
+    f.seek(0, 2)
+    size = f.tell()
+    f.seek(0)
+    if size > MAX_UPLOAD_SIZE:
+        return jsonify({"error": f"File too large (max {MAX_UPLOAD_SIZE // 1024 // 1024}MB)"}), 413
+    
+    # Generate unique filename to avoid collisions
+    original = secure_filename(f.filename)
+    name, ext = os.path.splitext(original)
+    unique_name = f"{name}_{uuid.uuid4().hex[:8]}{ext}"
+    
+    filepath = os.path.join(UPLOADS_DIR, unique_name)
+    f.save(filepath)
+    
+    return jsonify({
+        "status": "uploaded",
+        "filename": unique_name,
+        "original_name": f.filename,
+        "size": size,
+        "url": f"/api/files/{unique_name}"
+    })
+
+@app.route('/api/files/<filename>')
+def serve_file(filename):
+    """Serve an uploaded file."""
+    safe_name = secure_filename(filename)
+    return send_from_directory(UPLOADS_DIR, safe_name)
 
 # ============ UI ============
 
@@ -384,6 +434,73 @@ CHAT_UI = """
         .copy-btn:hover { color: var(--text-secondary); border-color: var(--border-light); }
         .copy-btn.copied { color: var(--accent); border-color: var(--accent-dim); }
 
+        /* Attachments */
+        .msg-attachments {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .msg-attachment {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+        .msg-attachment:hover { background: rgba(255,255,255,0.1); }
+        .msg-attachment svg { width: 14px; height: 14px; flex-shrink: 0; }
+        .msg-img-preview {
+            max-width: 300px;
+            max-height: 200px;
+            border-radius: 8px;
+            margin-top: 6px;
+            cursor: pointer;
+        }
+        .attach-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s;
+        }
+        .attach-btn:hover { color: var(--text-secondary); }
+        .attach-btn svg { width: 20px; height: 20px; }
+        .pending-files {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 6px 0;
+        }
+        .pending-file {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(74,222,128,0.1);
+            border: 1px solid var(--accent-dim);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: var(--accent);
+        }
+        .pending-file .remove {
+            cursor: pointer;
+            opacity: 0.6;
+            margin-left: 2px;
+        }
+        .pending-file .remove:hover { opacity: 1; }
+
         /* Date separator */
         .date-sep {
             text-align: center;
@@ -518,7 +635,16 @@ CHAT_UI = """
                 </select>
             </div>
             <div class="input-box">
-                <textarea id="message" rows="1" placeholder="Message Forest Chat..." onkeydown="handleKey(event)"></textarea>
+                <button class="attach-btn" onclick="document.getElementById('file-input').click()" title="Attach file">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"></path>
+                    </svg>
+                </button>
+                <input type="file" id="file-input" multiple style="display:none" onchange="handleFiles(this.files)">
+                <div style="flex:1;display:flex;flex-direction:column">
+                    <div class="pending-files" id="pending-files"></div>
+                    <textarea id="message" rows="1" placeholder="Message Forest Chat..." onkeydown="handleKey(event)"></textarea>
+                </div>
                 <button class="send-btn" onclick="sendMessage()" title="Send">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -532,11 +658,13 @@ CHAT_UI = """
     <script>
         let lastId = 0;
         let allMessages = [];
+        let pendingFiles = [];
         const wrapper = document.getElementById('messages-wrapper');
         const chat = document.getElementById('chat');
         const textarea = document.getElementById('message');
         const emptyEl = document.getElementById('empty');
         const countEl = document.getElementById('msg-count');
+        const pendingEl = document.getElementById('pending-files');
 
         // Auto-resize textarea
         textarea.addEventListener('input', () => {
@@ -561,6 +689,58 @@ CHAT_UI = """
 
         function shouldAutoScroll() {
             return wrapper.scrollHeight - wrapper.scrollTop - wrapper.clientHeight < 80;
+        }
+
+        function handleFiles(fileList) {
+            for (const f of fileList) {
+                if (f.size > 25 * 1024 * 1024) { alert(f.name + ' too large (25MB max)'); continue; }
+                pendingFiles.push(f);
+            }
+            renderPending();
+            document.getElementById('file-input').value = '';
+        }
+
+        function removePending(idx) {
+            pendingFiles.splice(idx, 1);
+            renderPending();
+        }
+
+        function renderPending() {
+            pendingEl.innerHTML = '';
+            pendingFiles.forEach((f, i) => {
+                const el = document.createElement('span');
+                el.className = 'pending-file';
+                el.innerHTML = f.name + ' <span class="remove" onclick="removePending(' + i + ')">âœ•</span>';
+                pendingEl.appendChild(el);
+            });
+            pendingEl.style.display = pendingFiles.length ? 'flex' : 'none';
+        }
+        renderPending();
+
+        async function uploadFiles() {
+            const results = [];
+            for (const f of pendingFiles) {
+                const fd = new FormData();
+                fd.append('file', f);
+                const resp = await fetch('/api/upload', { method: 'POST', body: fd });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    results.push({ filename: data.filename, original_name: data.original_name, url: data.url, size: data.size });
+                }
+            }
+            pendingFiles = [];
+            renderPending();
+            return results;
+        }
+
+        function isImage(name) {
+            return /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(name);
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+            return (bytes/1024/1024).toFixed(1) + ' MB';
         }
 
         function renderMessages() {
@@ -608,6 +788,33 @@ CHAT_UI = """
                 const bubble = document.createElement('div');
                 bubble.className = 'msg-bubble ' + m.from;
                 bubble.textContent = m.message;
+
+                // Render attachments
+                const atts = m.attachments || [];
+                if (atts.length) {
+                    const attDiv = document.createElement('div');
+                    attDiv.className = 'msg-attachments';
+                    atts.forEach(a => {
+                        if (isImage(a.original_name || a.filename)) {
+                            const img = document.createElement('img');
+                            img.className = 'msg-img-preview';
+                            img.src = a.url;
+                            img.alt = a.original_name || a.filename;
+                            img.onclick = () => window.open(a.url, '_blank');
+                            attDiv.appendChild(img);
+                        } else {
+                            const link = document.createElement('a');
+                            link.className = 'msg-attachment';
+                            link.href = a.url;
+                            link.target = '_blank';
+                            link.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> ' + (a.original_name || a.filename);
+                            if (a.size) link.innerHTML += ' <span style="opacity:0.5">' + formatSize(a.size) + '</span>';
+                            attDiv.appendChild(link);
+                        }
+                    });
+                    bubble.appendChild(attDiv);
+                }
+
                 chat.lastElementChild.appendChild(bubble);
 
                 const actions = document.createElement('div');
@@ -655,15 +862,21 @@ CHAT_UI = """
             const sender = document.getElementById('sender').value;
             const recipient = document.getElementById('recipient').value;
             const message = textarea.value.trim();
-            if (!message) return;
+            if (!message && !pendingFiles.length) return;
 
             textarea.value = '';
             textarea.style.height = 'auto';
 
+            // Upload any pending files first
+            let attachments = [];
+            if (pendingFiles.length) {
+                attachments = await uploadFiles();
+            }
+
             await fetch('/api/send', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({from: sender, to: recipient, message: message})
+                body: JSON.stringify({from: sender, to: recipient, message: message, attachments: attachments})
             });
             loadMessages();
         }
