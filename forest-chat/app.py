@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🌲 Forest Chat - Bot-to-Bot Communication Hub
+ðŸŒ² Forest Chat - Bot-to-Bot Communication Hub
 Enables Cypress <-> Redwood direct communication with conversation logging.
 """
 
@@ -190,7 +190,7 @@ def read_messages():
         # Per-bot delivery tracking (backwards-compatible with old boolean)
         delivered_to = m.get('delivered_to', {})
         if isinstance(delivered_to, bool) or not isinstance(delivered_to, dict):
-            # Old format had global boolean — treat as empty dict
+            # Old format had global boolean â€” treat as empty dict
             delivered_to = {}
         if delivered_to.get(reader):
             continue
@@ -255,6 +255,8 @@ CHAT_UI = """
             --bubble-cypress: #0f2f20;
             --bubble-redwood: #2a1a10;
             --bubble-matthew-border: #2a5a3a;
+            --bubble-bigc: #1a1a3a;
+            --bubble-bigc-border: #3a3a6a;
             --bubble-cypress-border: #1a4a30;
             --bubble-redwood-border: #5a3a1a;
         }
@@ -333,6 +335,7 @@ CHAT_UI = """
         .msg-avatar.cypress { background: #065f46; color: #6ee7b7; }
         .msg-avatar.redwood { background: #7c2d12; color: #fdba74; }
         .msg-avatar.matthew { background: #1e3a5f; color: #93c5fd; }
+        .msg-avatar.bigc { background: #2d1b69; color: #c4b5fd; }
         .msg-sender {
             font-size: 0.8rem;
             font-weight: 600;
@@ -356,6 +359,7 @@ CHAT_UI = """
         .msg-bubble.cypress { background: var(--bubble-cypress); border-color: var(--bubble-cypress-border); }
         .msg-bubble.redwood { background: var(--bubble-redwood); border-color: var(--bubble-redwood-border); }
         .msg-bubble.matthew { background: var(--bubble-matthew); border-color: var(--bubble-matthew-border); }
+        .msg-bubble.bigc { background: var(--bubble-bigc); border-color: var(--bubble-bigc-border); }
         .msg-time {
             font-size: 0.7rem;
             color: var(--text-muted);
@@ -464,7 +468,7 @@ CHAT_UI = """
             <div class="status-dot"></div>
             <div>
                 <div class="header-title">Forest Chat</div>
-                <div class="header-subtitle">Cypress · Redwood · Matthew</div>
+                <div class="header-subtitle">Cypress Â· Redwood Â· Matthew</div>
             </div>
         </div>
         <div class="header-subtitle" id="msg-count"></div>
@@ -473,7 +477,7 @@ CHAT_UI = """
     <div class="messages-wrapper" id="messages-wrapper">
         <div class="messages-inner" id="chat">
             <div class="empty-state" id="empty">
-                <div class="icon">🌲</div>
+                <div class="icon">ðŸŒ²</div>
                 <p>No messages yet</p>
             </div>
         </div>
@@ -484,6 +488,7 @@ CHAT_UI = """
             <div class="input-controls">
                 <select id="sender">
                     <option value="matthew">From: Matthew</option>
+                    <option value="bigc">From: BigC</option>
                     <option value="cypress">From: Cypress</option>
                     <option value="redwood">From: Redwood</option>
                 </select>
@@ -492,6 +497,7 @@ CHAT_UI = """
                     <option value="cypress">To: Cypress</option>
                     <option value="redwood">To: Redwood</option>
                     <option value="matthew">To: Matthew</option>
+                    <option value="bigc">To: BigC</option>
                 </select>
             </div>
             <div class="input-box">
@@ -574,7 +580,7 @@ CHAT_UI = """
                     const sender = document.createElement('div');
                     sender.className = 'msg-sender';
                     const toLabel = m.to === 'all' ? 'everyone' : m.to;
-                    sender.innerHTML = m.from + ' <span class="arrow">→</span> <span class="target">' + toLabel + '</span>';
+                    sender.innerHTML = m.from + ' <span class="arrow">â†’</span> <span class="target">' + toLabel + '</span>';
 
                     label.appendChild(avatar);
                     label.appendChild(sender);
@@ -648,7 +654,7 @@ def health():
     return jsonify({"status": "ok", "service": "forest-chat"})
 
 if __name__ == '__main__':
-    print("🌲 Forest Chat starting on port 5001...")
+    print("ðŸŒ² Forest Chat starting on port 5001...")
     print(f"   Messages stored in: {MESSAGES_FILE}")
     print(f"   UI available at: http://localhost:5001")
     app.run(host='0.0.0.0', port=5001, debug=False)
