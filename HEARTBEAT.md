@@ -1,8 +1,5 @@
 # HEARTBEAT.md
 
-## NOTE: Forest Chat polling REMOVED
-Webhooks handle incoming Forest Chat messages in real-time.
-No need to poll here - was causing duplicate responses.
+# Keep this file empty (or with only comments) to skip heartbeat API calls.
 
-## Standard Checks
-- Keep this minimal to reduce token burn
+# Add tasks below when you want the agent to check something periodically.
