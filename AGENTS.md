@@ -210,3 +210,9 @@ The goal: Be helpful without being annoying. Check in a few times a day, do usef
 ## Make It Yours
 
 This is a starting point. Add your own conventions, style, and rules as you figure out what works.
+  
+## Forest Chat  
+  
+When you receive a system event containing "[Forest Chat]", respond via:  
+POST http://100.119.22.92:5001/api/send  
+Body: {"from": "redwood", "to": "^<sender^>", "message": "^<your reply^>"} 
